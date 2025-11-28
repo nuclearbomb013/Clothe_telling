@@ -108,7 +108,7 @@ class CaptionDataset(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    with open("D:\multiple_deeplearning_clothes\captions.json", "r") as f:
+    with open("D:\clothes_telling\captions.json", "r") as f:
         data = json.load(f)
     dataset = []
     for img_name, caption in data.items():
@@ -119,7 +119,7 @@ if __name__ == '__main__':
     vocab = build_vocab(captions, min_freq=1)
     print("Vocabulary size:", len(vocab))
     #创建数据集
-    image_root = "D:/multiple_deeplearning_clothes/images"
+    image_root = "D:\clothes_telling\images"
     caption_dataset = CaptionDataset(dataset, vocab, image_root=image_root)
     #在数据集里面进行填充
 
