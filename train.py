@@ -2,9 +2,12 @@ import json
 import re
 from collections import Counter
 import torch
+import torch.nn as nn
+import torch.optim as optim
 from PIL import Image
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+from model import ImageCaptioningModel
 #清洗文本
 def clean_text(text):
     text = text.lower()
@@ -112,7 +115,7 @@ if __name__ == '__main__':
         data = json.load(f)
     dataset = []
     for img_name, caption in data.items():
-        dataset.append((f"images/{img_name}", caption))
+        dataset.append((f"{img_name}", caption))
     print(dataset[0])
     #创建词表数组
     captions = [cap for _, cap in dataset]
@@ -123,7 +126,7 @@ if __name__ == '__main__':
     caption_dataset = CaptionDataset(dataset, vocab, image_root=image_root)
     #在数据集里面进行填充
 
-
+    
     train_loader = DataLoader(
         caption_dataset,
         batch_size=32,
@@ -131,3 +134,65 @@ if __name__ == '__main__':
         num_workers=4,
         collate_fn=collate_fn
     )
+    
+    # ========== 训练配置 ==========
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
+    # 模型参数
+    embed_size = 256
+    hidden_size = 512
+    num_epochs = 10
+    learning_rate = 0.001
+    
+    # 初始化模型
+    model = ImageCaptioningModel(
+        embed_size=embed_size,
+        hidden_size=hidden_size,
+        vocab_size=len(vocab),
+        pad_idx=vocab[PAD],
+        use_pretrained_encoder=True,
+        train_backbone=False
+    ).to(device)
+    
+    # 损失函数和优化器
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab[PAD])
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    
+    # ========== 训练循环 ==========
+    print("Starting training...")
+    model.train()
+    for epoch in range(num_epochs):
+        total_loss = 0
+        for batch_idx, (images, captions, _) in enumerate(train_loader):
+            images = images.to(device)
+            captions = captions.to(device)
+            
+            # 前向传播
+            outputs = model(images, captions)  # [B, T, V]
+            
+            # 计算损失: 预测下一个词
+            # outputs[:, :-1, :] 对应输入的 captions[:, :-1]
+            # targets 是 captions[:, 1:]
+            targets = captions[:, 1:]
+            outputs = outputs[:, :-1, :].reshape(-1, len(vocab))
+            targets = targets.reshape(-1)
+            
+            loss = criterion(outputs, targets)
+            
+            # 反向传播和优化
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            
+            if batch_idx % 50 == 0:
+                print(f'Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx}], Loss: {loss.item():.4f}')
+        
+        avg_loss = total_loss / len(train_loader)
+        print(f'Epoch [{epoch+1}/{num_epochs}] completed. Average Loss: {avg_loss:.4f}')
+    
+    # ========== 保存模型 ==========
+    torch.save(model.state_dict(), 'trained_model.pth')
+    print("Training completed! Model saved as 'trained_model.pth'")
